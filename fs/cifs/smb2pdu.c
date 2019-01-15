@@ -2893,7 +2893,7 @@ smb2_echo_callback(struct mid_q_entry *mid)
 {
 	struct TCP_Server_Info *server = mid->callback_data;
 	struct smb2_echo_rsp *rsp = (struct smb2_echo_rsp *)mid->resp_buf;
-	unsigned int credits_received = 1;
+	unsigned int credits_received = 0;
 
 	if (mid->mid_state == MID_RESPONSE_RECEIVED)
 		credits_received = le16_to_cpu(rsp->sync_hdr.CreditRequest);
@@ -3152,7 +3152,7 @@ smb2_readv_callback(struct mid_q_entry *mid)
 	struct TCP_Server_Info *server = tcon->ses->server;
 	struct smb2_sync_hdr *shdr =
 				(struct smb2_sync_hdr *)rdata->iov[0].iov_base;
-	unsigned int credits_received = 1;
+	unsigned int credits_received = 0;
 	struct smb_rqst rqst = { .rq_iov = rdata->iov,
 				 .rq_nvec = 2,
 				 .rq_pages = rdata->pages,
@@ -3376,7 +3376,7 @@ smb2_writev_callback(struct mid_q_entry *mid)
 	struct cifs_tcon *tcon = tlink_tcon(wdata->cfile->tlink);
 	unsigned int written;
 	struct smb2_write_rsp *rsp = (struct smb2_write_rsp *)mid->resp_buf;
-	unsigned int credits_received = 1;
+	unsigned int credits_received = 0;
 
 	switch (mid->mid_state) {
 	case MID_RESPONSE_RECEIVED:
