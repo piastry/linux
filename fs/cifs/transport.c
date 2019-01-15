@@ -914,7 +914,7 @@ compound_send_recv(const unsigned int xid, struct cifs_ses *ses,
 
 			/* Update # of requests on wire to server */
 			for (j = 0; j < num_rqst; j++)
-				add_credits(ses->server, credits[j], optype);
+				add_credits(ses->server, credits[j], optype, 0);
 			return PTR_ERR(midQ[i]);
 		}
 

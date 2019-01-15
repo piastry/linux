@@ -2173,6 +2173,7 @@ retry:
 		}
 
 		wdata->credits = credits;
+		wdata->instance = instance;
 
 		rc = wdata_send_pages(wdata, nr_pages, mapping, wbc);
 
@@ -2621,6 +2622,7 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 	struct page **pagevec;
 	size_t start;
 	__u32 instance; /* so we know whether session reconnected under us */
+	unsigned int xid;
 
 	if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_RWPIDFORWARD)
 		pid = open_file->pid;
@@ -2628,6 +2630,7 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 		pid = current->tgid;
 
 	server = tlink_tcon(open_file->tlink)->ses->server;
+	xid = get_xid();
 
 	do {
 		unsigned int wsize, credits;
@@ -2671,7 +2674,6 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 				add_credits_and_wake_if(server, credits, 0, instance);
 				break;
 			}
-
 
 			wdata->page_offset = start;
 			wdata->tailsz =
@@ -2750,6 +2752,7 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 		len -= cur_len;
 	} while (len > 0);
 
+	free_xid(xid);
 	return rc;
 }
 
@@ -3399,6 +3402,7 @@ cifs_send_async_read(loff_t offset, size_t len, struct cifsFileInfo *open_file,
 		rdata->read_into_pages = cifs_uncached_read_into_pages;
 		rdata->copy_into_pages = cifs_uncached_copy_into_pages;
 		rdata->credits = credits;
+		rdata->instance = instance;
 		rdata->ctx = ctx;
 		kref_get(&ctx->refcount);
 
@@ -4140,6 +4144,7 @@ static int cifs_readpages(struct file *file, struct address_space *mapping,
 		rdata->read_into_pages = cifs_readpages_read_into_pages;
 		rdata->copy_into_pages = cifs_readpages_copy_into_pages;
 		rdata->credits = credits;
+		rdata->instance = instance;
 
 		list_for_each_entry_safe(page, tpage, &tmplist, lru) {
 			list_del(&page->lru);

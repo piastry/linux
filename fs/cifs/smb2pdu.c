@@ -3267,8 +3267,11 @@ smb2_async_readv(struct cifs_readdata *rdata)
 		shdr->CreditRequest =
 			cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 1);
 		spin_lock(&server->req_lock);
-		server->credits += rdata->credits -
+		if (server->reconnect_instance == rdata->instance)
+			server->credits += rdata->credits -
 						le16_to_cpu(shdr->CreditCharge);
+		else
+			cifs_dbg(VFS, "trying to return %d credits to old session\n", rdata->credits);
 		spin_unlock(&server->req_lock);
 		wake_up(&server->request_q);
 		rdata->credits = le16_to_cpu(shdr->CreditCharge);
@@ -3546,8 +3549,11 @@ smb2_async_writev(struct cifs_writedata *wdata,
 		shdr->CreditRequest =
 			cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 1);
 		spin_lock(&server->req_lock);
-		server->credits += wdata->credits -
+		if (server->reconnect_instance == wdata->instance)
+			server->credits += wdata->credits -
 						le16_to_cpu(shdr->CreditCharge);
+		else
+			cifs_dbg(VFS, "trying to return %d credits to old session\n", wdata->credits);
 		spin_unlock(&server->req_lock);
 		wake_up(&server->request_q);
 		wdata->credits = le16_to_cpu(shdr->CreditCharge);

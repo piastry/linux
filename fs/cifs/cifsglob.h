@@ -18,7 +18,7 @@
  */
 #ifndef _CIFS_GLOB_H
 #define _CIFS_GLOB_H
-
+#define CONFIG_CIFS_STATS2
 #include <linux/in.h>
 #include <linux/in6.h>
 #include <linux/slab.h>
@@ -1235,6 +1235,7 @@ struct cifs_readdata {
 	unsigned int			page_offset;
 	unsigned int			tailsz;
 	unsigned int			credits;
+	__u32	instance; /* which instance of session owns these credits */
 	unsigned int			nr_pages;
 	struct page			**pages;
 };
@@ -1261,6 +1262,7 @@ struct cifs_writedata {
 	unsigned int			page_offset;
 	unsigned int			tailsz;
 	unsigned int			credits;
+	__u32	instance; /* which instance of session owns these credits */
 	unsigned int			nr_pages;
 	struct page			**pages;
 };
