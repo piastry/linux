@@ -815,7 +815,7 @@ cifs_echo_callback(struct mid_q_entry *mid)
 	struct TCP_Server_Info *server = mid->callback_data;
 
 	DeleteMidQEntry(mid);
-	add_credits(server, 1, CIFS_ECHO_OP);
+	add_credits(server, 1, CIFS_ECHO_OP, 0);
 }
 
 int
@@ -1730,7 +1730,7 @@ cifs_readv_callback(struct mid_q_entry *mid)
 
 	queue_work(cifsiod_wq, &rdata->work);
 	DeleteMidQEntry(mid);
-	add_credits(server, 1, 0);
+	add_credits(server, 1, 0, 0 /* no instance id available */);
 }
 
 /* cifs_async_readv - send an async write, and set up mid to handle result */
@@ -2241,7 +2241,7 @@ cifs_writev_callback(struct mid_q_entry *mid)
 
 	queue_work(cifsiod_wq, &wdata->work);
 	DeleteMidQEntry(mid);
-	add_credits(tcon->ses->server, 1, 0);
+	add_credits(tcon->ses->server, 1, 0, 0);
 }
 
 /* cifs_async_writev - send an async write, and set up mid to handle result */

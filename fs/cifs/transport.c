@@ -540,10 +540,11 @@ wait_for_free_request(struct TCP_Server_Info *server, const int timeout,
 
 int
 cifs_wait_mtu_credits(struct TCP_Server_Info *server, unsigned int size,
-		      unsigned int *num, unsigned int *credits)
+		      unsigned int *num, unsigned int *credits, __u32 *instance)
 {
 	*num = size;
 	*credits = 0;
+	*instance = server->reconnect_instance;
 	return 0;
 }
 
@@ -635,6 +636,7 @@ cifs_call_async(struct TCP_Server_Info *server, struct smb_rqst *rqst,
 	int rc, timeout, optype;
 	struct mid_q_entry *mid;
 	unsigned int credits = 0;
+	__u32 instance;
 
 	timeout = flags & CIFS_TIMEOUT_MASK;
 	optype = flags & CIFS_OP_MASK;
@@ -645,12 +647,12 @@ cifs_call_async(struct TCP_Server_Info *server, struct smb_rqst *rqst,
 			return rc;
 		credits = 1;
 	}
-
+	instance = server->reconnect_instance;
 	mutex_lock(&server->srv_mutex);
 	mid = server->ops->setup_async_request(server, rqst);
 	if (IS_ERR(mid)) {
 		mutex_unlock(&server->srv_mutex);
-		add_credits_and_wake_if(server, credits, optype);
+		add_credits_and_wake_if(server, credits, optype, instance);
 		return PTR_ERR(mid);
 	}
 
@@ -684,7 +686,8 @@ cifs_call_async(struct TCP_Server_Info *server, struct smb_rqst *rqst,
 	if (rc == 0)
 		return 0;
 
-	add_credits_and_wake_if(server, credits, optype);
+	/* Do we need to worry about instance id here */
+	add_credits_and_wake_if(server, credits, optype, instance);
 	return rc;
 }
 
@@ -1142,7 +1145,7 @@ SendReceive(const unsigned int xid, struct cifs_ses *ses,
 	if (rc) {
 		mutex_unlock(&ses->server->srv_mutex);
 		/* Update # of requests on wire to server */
-		add_credits(ses->server, 1, 0);
+		add_credits(ses->server, 1, 0, 0);
 		return rc;
 	}
 
@@ -1178,7 +1181,7 @@ SendReceive(const unsigned int xid, struct cifs_ses *ses,
 			/* no longer considered to be "in-flight" */
 			midQ->callback = DeleteMidQEntry;
 			spin_unlock(&GlobalMid_Lock);
-			add_credits(ses->server, 1, 0);
+			add_credits(ses->server, 1, 0, 0);
 			return rc;
 		}
 		spin_unlock(&GlobalMid_Lock);
@@ -1186,7 +1189,7 @@ SendReceive(const unsigned int xid, struct cifs_ses *ses,
 
 	rc = cifs_sync_mid_result(midQ, ses->server);
 	if (rc != 0) {
-		add_credits(ses->server, 1, 0);
+		add_credits(ses->server, 1, 0, 0);
 		return rc;
 	}
 
@@ -1202,7 +1205,7 @@ SendReceive(const unsigned int xid, struct cifs_ses *ses,
 	rc = cifs_check_receive(midQ, ses->server, 0);
 out:
 	cifs_delete_mid(midQ);
-	add_credits(ses->server, 1, 0);
+	add_credits(ses->server, 1, 0, 0);
 
 	return rc;
 }

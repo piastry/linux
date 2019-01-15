@@ -231,7 +231,7 @@ struct smb_version_operations {
 	int (*check_receive)(struct mid_q_entry *, struct TCP_Server_Info *,
 			     bool);
 	void (*add_credits)(struct TCP_Server_Info *, const unsigned int,
-			    const int);
+			    const int, __u32 instance);
 	void (*set_credits)(struct TCP_Server_Info *, const int);
 	int * (*get_credits_field)(struct TCP_Server_Info *, const int);
 	unsigned int (*get_credits)(struct mid_q_entry *);
@@ -452,7 +452,7 @@ struct smb_version_operations {
 	unsigned int (*wp_retry_size)(struct inode *);
 	/* get mtu credits */
 	int (*wait_mtu_credits)(struct TCP_Server_Info *, unsigned int,
-				unsigned int *, unsigned int *);
+				unsigned int *, unsigned int *, __u32 *);
 	/* check if we need to issue closedir */
 	bool (*dir_needs_close)(struct cifsFileInfo *);
 	long (*fallocate)(struct file *, struct cifs_tcon *, int, loff_t,
@@ -732,17 +732,17 @@ has_credits(struct TCP_Server_Info *server, int *credits)
 
 static inline void
 add_credits(struct TCP_Server_Info *server, const unsigned int add,
-	    const int optype)
+	    const int optype, __u32 instance)
 {
-	server->ops->add_credits(server, add, optype);
+	server->ops->add_credits(server, add, optype, 0);
 }
 
 static inline void
 add_credits_and_wake_if(struct TCP_Server_Info *server, const unsigned int add,
-			const int optype)
+			const int optype, u32 instance)
 {
 	if (add) {
-		server->ops->add_credits(server, add, optype);
+		server->ops->add_credits(server, add, optype, instance);
 		wake_up(&server->request_q);
 	}
 }

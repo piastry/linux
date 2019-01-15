@@ -69,7 +69,7 @@ change_conf(struct TCP_Server_Info *server)
 
 static void
 smb2_add_credits(struct TCP_Server_Info *server, const unsigned int add,
-		 const int optype)
+		 const int optype, __u32 instance)
 {
 	int *val, rc = 0;
 	spin_lock(&server->req_lock);
@@ -79,8 +79,11 @@ smb2_add_credits(struct TCP_Server_Info *server, const unsigned int add,
 	if (((optype & CIFS_OP_MASK) == CIFS_NEG_OP) && (*val != 0))
 		trace_smb3_reconnect_with_invalid_credits(server->CurrentMid,
 			server->hostname, *val);
+	if ((instance == 0) || (instance == server->reconnect_instance))
+		*val += add;
+	else
+		cifs_dbg(VFS, "trying to put %d credits to wrong (new) instance %d instead of %d\n", add, server->reconnect_instance, instance); /* BB removeme */
 
-	*val += add;
 	if (*val > 65000) {
 		*val = 65000; /* Don't get near 64K credits, avoid srv bugs */
 		printk_once(KERN_WARNING "server overflowed SMB3 credits\n");
@@ -141,7 +144,7 @@ smb2_get_credits(struct mid_q_entry *mid)
 
 static int
 smb2_wait_mtu_credits(struct TCP_Server_Info *server, unsigned int size,
-		      unsigned int *num, unsigned int *credits)
+		      unsigned int *num, unsigned int *credits, __u32 *instance)
 {
 	int rc = 0;
 	unsigned int scredits;
@@ -176,6 +179,7 @@ smb2_wait_mtu_credits(struct TCP_Server_Info *server, unsigned int size,
 			*num = min_t(unsigned int, size,
 				     scredits * SMB2_MAX_BUFFER_SIZE);
 
+			*instance = server->reconnect_instance;
 			*credits = DIV_ROUND_UP(*num, SMB2_MAX_BUFFER_SIZE);
 			server->credits -= *credits;
 			server->in_flight++;

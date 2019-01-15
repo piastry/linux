@@ -2899,7 +2899,7 @@ smb2_echo_callback(struct mid_q_entry *mid)
 		credits_received = le16_to_cpu(rsp->sync_hdr.CreditRequest);
 
 	DeleteMidQEntry(mid);
-	add_credits(server, credits_received, CIFS_ECHO_OP);
+	add_credits(server, credits_received, CIFS_ECHO_OP, 0);
 }
 
 void smb2_reconnect_server(struct work_struct *work)
@@ -3211,7 +3211,7 @@ smb2_readv_callback(struct mid_q_entry *mid)
 
 	queue_work(cifsiod_wq, &rdata->work);
 	DeleteMidQEntry(mid);
-	add_credits(server, credits_received, 0);
+	add_credits(server, credits_received, 0, 0);
 }
 
 /* smb2_async_readv - send an async read, and set up mid to handle result */
@@ -3426,7 +3426,7 @@ smb2_writev_callback(struct mid_q_entry *mid)
 
 	queue_work(cifsiod_wq, &wdata->work);
 	DeleteMidQEntry(mid);
-	add_credits(tcon->ses->server, credits_received, 0);
+	add_credits(tcon->ses->server, credits_received, 0, 0);
 }
 
 /* smb2_async_writev - send an async write, and set up mid to handle result */

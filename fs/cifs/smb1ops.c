@@ -118,7 +118,7 @@ cifs_find_mid(struct TCP_Server_Info *server, char *buffer)
 
 static void
 cifs_add_credits(struct TCP_Server_Info *server, const unsigned int add,
-		 const int optype)
+		 const int optype, __u32 instance)
 {
 	spin_lock(&server->req_lock);
 	server->credits += add;
