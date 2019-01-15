@@ -827,7 +827,8 @@ cifs_compound_callback(struct mid_q_entry *mid)
 			cifs_dbg(FYI, "Bad state for cancelled MID\n");
 	}
 
-	add_credits(server, credits_received, optype);
+	add_credits(server, credits_received, optype,
+		    server->reconnect_instance);
 }
 
 static void
@@ -891,7 +892,7 @@ compound_send_recv(const unsigned int xid, struct cifs_ses *ses,
 			 * requests correctly.
 			 */
 			for (j = 0; j < i; j++)
-				add_credits(ses->server, 1, optype);
+				add_credits(ses->server, 1, optype, 0);
 			return rc;
 		}
 		credits[i] = 1;
@@ -945,7 +946,7 @@ compound_send_recv(const unsigned int xid, struct cifs_ses *ses,
 	if (rc < 0) {
 		/* Sending failed for some reason - return credits back */
 		for (i = 0; i < num_rqst; i++)
-			add_credits(ses->server, credits[i], optype);
+			add_credits(ses->server, credits[i], optype, 0);
 		goto out;
 	}
 

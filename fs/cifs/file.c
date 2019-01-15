@@ -2565,6 +2565,7 @@ cifs_resend_wdata(struct cifs_writedata *wdata, struct list_head *wdata_list,
 	int rc;
 	struct TCP_Server_Info *server =
 		tlink_tcon(wdata->cfile->tlink)->ses->server;
+	unsigned int instance;
 
 	/*
 	 * Wait for credits to resend this wdata.
@@ -2572,13 +2573,13 @@ cifs_resend_wdata(struct cifs_writedata *wdata, struct list_head *wdata_list,
 	 */
 	do {
 		rc = server->ops->wait_mtu_credits(
-			server, wdata->bytes, &wsize, &credits);
+			server, wdata->bytes, &wsize, &credits, &instance);
 
 		if (rc)
 			goto out;
 
 		if (wsize < wdata->bytes) {
-			add_credits_and_wake_if(server, credits, 0);
+			add_credits_and_wake_if(server, credits, 0, instance);
 			msleep(1000);
 		}
 	} while (wsize < wdata->bytes);
@@ -2598,7 +2599,7 @@ cifs_resend_wdata(struct cifs_writedata *wdata, struct list_head *wdata_list,
 		return 0;
 	}
 
-	add_credits_and_wake_if(server, wdata->credits, 0);
+	add_credits_and_wake_if(server, wdata->credits, 0, instance);
 out:
 	kref_put(&wdata->refcount, cifs_uncached_writedata_release);
 
@@ -2658,7 +2659,8 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 				dump_stack();
 
 				rc = result;
-				add_credits_and_wake_if(server, credits, 0);
+				add_credits_and_wake_if(server, credits, 0,
+							instance);
 				break;
 			}
 			cur_len = (size_t)result;
@@ -2671,7 +2673,8 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 					     cifs_uncached_writev_complete);
 			if (!wdata) {
 				rc = -ENOMEM;
-				add_credits_and_wake_if(server, credits, 0, instance);
+				add_credits_and_wake_if(server, credits, 0,
+							instance);
 				break;
 			}
 
@@ -2687,14 +2690,16 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 					     cifs_uncached_writev_complete);
 			if (!wdata) {
 				rc = -ENOMEM;
-				add_credits_and_wake_if(server, credits, 0, instance);
+				add_credits_and_wake_if(server, credits, 0,
+							instance);
 				break;
 			}
 
 			rc = cifs_write_allocate_pages(wdata->pages, nr_pages);
 			if (rc) {
 				kfree(wdata);
-				add_credits_and_wake_if(server, credits, 0);
+				add_credits_and_wake_if(server, credits, 0,
+							instance);
 				break;
 			}
 
@@ -2705,7 +2710,8 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 				for (i = 0; i < nr_pages; i++)
 					put_page(wdata->pages[i]);
 				kfree(wdata);
-				add_credits_and_wake_if(server, credits, 0);
+				add_credits_and_wake_if(server, credits, 0,
+							instance);
 				break;
 			}
 
@@ -3261,6 +3267,7 @@ static int cifs_resend_rdata(struct cifs_readdata *rdata,
 	int rc;
 	struct TCP_Server_Info *server =
 		tlink_tcon(rdata->cfile->tlink)->ses->server;
+	unsigned int instance;
 
 	/*
 	 * Wait for credits to resend this rdata.
@@ -3268,13 +3275,13 @@ static int cifs_resend_rdata(struct cifs_readdata *rdata,
 	 */
 	do {
 		rc = server->ops->wait_mtu_credits(server, rdata->bytes,
-						&rsize, &credits);
+						&rsize, &credits, &instance);
 
 		if (rc)
 			goto out;
 
 		if (rsize < rdata->bytes) {
-			add_credits_and_wake_if(server, credits, 0);
+			add_credits_and_wake_if(server, credits, 0, instance);
 			msleep(1000);
 		}
 	} while (rsize < rdata->bytes);
@@ -3294,7 +3301,7 @@ static int cifs_resend_rdata(struct cifs_readdata *rdata,
 		return 0;
 	}
 
-	add_credits_and_wake_if(server, rdata->credits, 0);
+	add_credits_and_wake_if(server, rdata->credits, 0, instance);
 out:
 	kref_put(&rdata->refcount,
 		cifs_uncached_readdata_release);
@@ -3354,7 +3361,8 @@ cifs_send_async_read(loff_t offset, size_t len, struct cifsFileInfo *open_file,
 				dump_stack();
 
 				rc = result;
-				add_credits_and_wake_if(server, credits, 0);
+				add_credits_and_wake_if(server, credits, 0,
+							instance);
 				break;
 			}
 			cur_len = (size_t)result;
@@ -3363,7 +3371,8 @@ cifs_send_async_read(loff_t offset, size_t len, struct cifsFileInfo *open_file,
 			rdata = cifs_readdata_direct_alloc(
 					pagevec, cifs_uncached_readv_complete);
 			if (!rdata) {
-				add_credits_and_wake_if(server, credits, 0);
+				add_credits_and_wake_if(server, credits, 0,
+							instance);
 				rc = -ENOMEM;
 				break;
 			}
@@ -3381,7 +3390,8 @@ cifs_send_async_read(loff_t offset, size_t len, struct cifsFileInfo *open_file,
 			rdata = cifs_readdata_alloc(npages,
 					    cifs_uncached_readv_complete);
 			if (!rdata) {
-				add_credits_and_wake_if(server, credits, 0, instance);
+				add_credits_and_wake_if(server, credits, 0,
+							instance);
 				rc = -ENOMEM;
 				break;
 			}
