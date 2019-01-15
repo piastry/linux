@@ -2893,13 +2893,15 @@ smb2_echo_callback(struct mid_q_entry *mid)
 {
 	struct TCP_Server_Info *server = mid->callback_data;
 	struct smb2_echo_rsp *rsp = (struct smb2_echo_rsp *)mid->resp_buf;
-	unsigned int credits_received = 0;
+	struct cifs_credits credits = { .value = 0, .instance = 0 };
 
-	if (mid->mid_state == MID_RESPONSE_RECEIVED)
-		credits_received = le16_to_cpu(rsp->sync_hdr.CreditRequest);
+	if (mid->mid_state == MID_RESPONSE_RECEIVED) {
+		credits.value = le16_to_cpu(rsp->sync_hdr.CreditRequest);
+		credits.instance = server->reconnect_instance;
+	}
 
 	DeleteMidQEntry(mid);
-	add_credits(server, credits_received, CIFS_ECHO_OP);
+	add_credits(server, &credits, CIFS_ECHO_OP);
 }
 
 void smb2_reconnect_server(struct work_struct *work)
@@ -3152,7 +3154,7 @@ smb2_readv_callback(struct mid_q_entry *mid)
 	struct TCP_Server_Info *server = tcon->ses->server;
 	struct smb2_sync_hdr *shdr =
 				(struct smb2_sync_hdr *)rdata->iov[0].iov_base;
-	unsigned int credits_received = 0;
+	struct cifs_credits credits = { .value = 0, .instance = 0 };
 	struct smb_rqst rqst = { .rq_iov = rdata->iov,
 				 .rq_nvec = 2,
 				 .rq_pages = rdata->pages,
@@ -3167,7 +3169,8 @@ smb2_readv_callback(struct mid_q_entry *mid)
 
 	switch (mid->mid_state) {
 	case MID_RESPONSE_RECEIVED:
-		credits_received = le16_to_cpu(shdr->CreditRequest);
+		credits.value = le16_to_cpu(shdr->CreditRequest);
+		credits.value = server->reconnect_instance;
 		/* result already set, check signature */
 		if (server->sign && !mid->decrypted) {
 			int rc;
@@ -3211,7 +3214,7 @@ smb2_readv_callback(struct mid_q_entry *mid)
 
 	queue_work(cifsiod_wq, &rdata->work);
 	DeleteMidQEntry(mid);
-	add_credits(server, credits_received, 0);
+	add_credits(server, &credits, 0);
 }
 
 /* smb2_async_readv - send an async read, and set up mid to handle result */
@@ -3242,9 +3245,9 @@ smb2_async_readv(struct cifs_readdata *rdata)
 	rc = smb2_new_read_req(
 		(void **) &buf, &total_len, &io_parms, rdata, 0, 0);
 	if (rc) {
-		if (rc == -EAGAIN && rdata->credits) {
+		if (rc == -EAGAIN && rdata->credits.value) {
 			/* credits was reset by reconnect */
-			rdata->credits = 0;
+			rdata->credits.value = 0;
 			/* reduce in_flight value since we won't send the req */
 			spin_lock(&server->req_lock);
 			server->in_flight--;
@@ -3261,17 +3264,24 @@ smb2_async_readv(struct cifs_readdata *rdata)
 
 	shdr = (struct smb2_sync_hdr *)buf;
 
-	if (rdata->credits) {
+	if (rdata->credits.value > 0) {
 		shdr->CreditCharge = cpu_to_le16(DIV_ROUND_UP(rdata->bytes,
 						SMB2_MAX_BUFFER_SIZE));
 		shdr->CreditRequest =
 			cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 1);
 		spin_lock(&server->req_lock);
-		server->credits += rdata->credits -
+		if (server->reconnect_instance == rdata->credits.instance)
+			server->credits += rdata->credits.value -
 						le16_to_cpu(shdr->CreditCharge);
+		else {
+			cifs_dbg(VFS, "trying to return %u credits to old session\n",
+				 rdata->credits.value);
+			rc = -EAGAIN;
+			goto async_readv_out;
+		}
 		spin_unlock(&server->req_lock);
 		wake_up(&server->request_q);
-		rdata->credits = le16_to_cpu(shdr->CreditCharge);
+		rdata->credits.value = le16_to_cpu(shdr->CreditCharge);
 		flags |= CIFS_HAS_CREDITS;
 	}
 
@@ -3289,7 +3299,7 @@ smb2_async_readv(struct cifs_readdata *rdata)
 		trace_smb3_read_done(0 /* xid */, io_parms.persistent_fid,
 				   io_parms.tcon->tid, io_parms.tcon->ses->Suid,
 				   io_parms.offset, io_parms.length);
-
+async_readv_out:
 	cifs_small_buf_release(buf);
 	return rc;
 }
@@ -3374,14 +3384,16 @@ smb2_writev_callback(struct mid_q_entry *mid)
 {
 	struct cifs_writedata *wdata = mid->callback_data;
 	struct cifs_tcon *tcon = tlink_tcon(wdata->cfile->tlink);
+	struct TCP_Server_Info *server = tcon->ses->server;
 	unsigned int written;
 	struct smb2_write_rsp *rsp = (struct smb2_write_rsp *)mid->resp_buf;
-	unsigned int credits_received = 0;
+	struct cifs_credits credits = { .value = 0, .instance = 0 };
 
 	switch (mid->mid_state) {
 	case MID_RESPONSE_RECEIVED:
-		credits_received = le16_to_cpu(rsp->sync_hdr.CreditRequest);
-		wdata->result = smb2_check_receive(mid, tcon->ses->server, 0);
+		credits.value = le16_to_cpu(rsp->sync_hdr.CreditRequest);
+		credits.instance = server->reconnect_instance;
+		wdata->result = smb2_check_receive(mid, server, 0);
 		if (wdata->result != 0)
 			break;
 
@@ -3426,7 +3438,7 @@ smb2_writev_callback(struct mid_q_entry *mid)
 
 	queue_work(cifsiod_wq, &wdata->work);
 	DeleteMidQEntry(mid);
-	add_credits(tcon->ses->server, credits_received, 0);
+	add_credits(server, &credits, 0);
 }
 
 /* smb2_async_writev - send an async write, and set up mid to handle result */
@@ -3445,9 +3457,9 @@ smb2_async_writev(struct cifs_writedata *wdata,
 
 	rc = smb2_plain_req_init(SMB2_WRITE, tcon, (void **) &req, &total_len);
 	if (rc) {
-		if (rc == -EAGAIN && wdata->credits) {
+		if (rc == -EAGAIN && wdata->credits.value) {
 			/* credits was reset by reconnect */
-			wdata->credits = 0;
+			wdata->credits.value = 0;
 			/* reduce in_flight value since we won't send the req */
 			spin_lock(&server->req_lock);
 			server->in_flight--;
@@ -3540,17 +3552,24 @@ smb2_async_writev(struct cifs_writedata *wdata,
 	req->Length = cpu_to_le32(wdata->bytes);
 #endif
 
-	if (wdata->credits) {
+	if (wdata->credits.value > 0) {
 		shdr->CreditCharge = cpu_to_le16(DIV_ROUND_UP(wdata->bytes,
 						    SMB2_MAX_BUFFER_SIZE));
 		shdr->CreditRequest =
 			cpu_to_le16(le16_to_cpu(shdr->CreditCharge) + 1);
 		spin_lock(&server->req_lock);
-		server->credits += wdata->credits -
+		if (server->reconnect_instance == wdata->credits.instance)
+			server->credits += wdata->credits.value -
 						le16_to_cpu(shdr->CreditCharge);
+		else {
+			cifs_dbg(VFS, "trying to return %d credits to old session\n",
+				 wdata->credits.value);
+			rc = -EAGAIN;
+			goto async_writev_out;
+		}
 		spin_unlock(&server->req_lock);
 		wake_up(&server->request_q);
-		wdata->credits = le16_to_cpu(shdr->CreditCharge);
+		wdata->credits.value = le16_to_cpu(shdr->CreditCharge);
 		flags |= CIFS_HAS_CREDITS;
 	}
 
