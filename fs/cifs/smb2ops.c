@@ -68,10 +68,13 @@ change_conf(struct TCP_Server_Info *server)
 }
 
 static void
-smb2_add_credits(struct TCP_Server_Info *server, const unsigned int add,
-		 const int optype)
+smb2_add_credits(struct TCP_Server_Info *server,
+		 const struct cifs_credits *credits, const int optype)
 {
 	int *val, rc = 0;
+	unsigned int add = credits->value;
+	unsigned int instance = credits->instance;
+
 	spin_lock(&server->req_lock);
 	val = server->ops->get_credits_field(server, optype);
 
@@ -79,8 +82,12 @@ smb2_add_credits(struct TCP_Server_Info *server, const unsigned int add,
 	if (((optype & CIFS_OP_MASK) == CIFS_NEG_OP) && (*val != 0))
 		trace_smb3_reconnect_with_invalid_credits(server->CurrentMid,
 			server->hostname, *val);
+	if ((instance == 0) || (instance == server->reconnect_instance))
+		*val += add;
+	else
+		cifs_dbg(VFS, "trying to put %d credits to wrong (new) instance %d instead of %d\n",
+			 add, server->reconnect_instance, instance); /* BB removeme */
 
-	*val += add;
 	if (*val > 65000) {
 		*val = 65000; /* Don't get near 64K credits, avoid srv bugs */
 		printk_once(KERN_WARNING "server overflowed SMB3 credits\n");
@@ -141,7 +148,7 @@ smb2_get_credits(struct mid_q_entry *mid)
 
 static int
 smb2_wait_mtu_credits(struct TCP_Server_Info *server, unsigned int size,
-		      unsigned int *num, unsigned int *credits)
+		      unsigned int *num, struct cifs_credits *credits)
 {
 	int rc = 0;
 	unsigned int scredits;
@@ -167,7 +174,8 @@ smb2_wait_mtu_credits(struct TCP_Server_Info *server, unsigned int size,
 			/* can deadlock with reopen */
 			if (scredits == 1) {
 				*num = SMB2_MAX_BUFFER_SIZE;
-				*credits = 0;
+				credits->value = 0;
+				credits->instance = 0;
 				break;
 			}
 
@@ -176,8 +184,9 @@ smb2_wait_mtu_credits(struct TCP_Server_Info *server, unsigned int size,
 			*num = min_t(unsigned int, size,
 				     scredits * SMB2_MAX_BUFFER_SIZE);
 
-			*credits = DIV_ROUND_UP(*num, SMB2_MAX_BUFFER_SIZE);
-			server->credits -= *credits;
+			credits->value = DIV_ROUND_UP(*num, SMB2_MAX_BUFFER_SIZE);
+			credits->instance = server->reconnect_instance;
+			server->credits -= credits->value;
 			server->in_flight++;
 			break;
 		}
