@@ -2676,7 +2676,6 @@ cifs_write_from_iter(loff_t offset, size_t len, struct iov_iter *from,
 				break;
 			}
 
-
 			wdata->page_offset = start;
 			wdata->tailsz =
 				nr_pages > 1 ?
@@ -3270,7 +3269,7 @@ static int cifs_resend_rdata(struct cifs_readdata *rdata,
 	 */
 	do {
 		rc = server->ops->wait_mtu_credits(server, rdata->bytes,
-						&rsize, &credits);
+						   &rsize, &credits);
 
 		if (rc)
 			goto out;
