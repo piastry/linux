@@ -1752,7 +1752,7 @@ smb2_close_dir(const unsigned int xid, struct cifs_tcon *tcon,
 * the number of credits and return true. Otherwise - return false.
 */
 static bool
-smb2_is_status_pending(char *buf, struct TCP_Server_Info *server, int length)
+smb2_is_status_pending(char *buf, struct TCP_Server_Info *server)
 {
 	struct smb2_sync_hdr *shdr = (struct smb2_sync_hdr *)buf;
 
@@ -3209,7 +3209,7 @@ handle_read_data(struct TCP_Server_Info *server, struct mid_q_entry *mid,
 	}
 
 	if (server->ops->is_status_pending &&
-			server->ops->is_status_pending(buf, server, 0))
+			server->ops->is_status_pending(buf, server))
 		return -1;
 
 	/* set up first two iov to get credits */
