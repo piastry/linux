@@ -738,8 +738,15 @@ cifs_lookup(struct inode *parent_dir_inode, struct dentry *direntry,
 static int
 cifs_d_revalidate(struct dentry *direntry, unsigned int flags)
 {
+	struct inode *inode = d_inode(direntry);
+
 	if (flags & LOOKUP_RCU)
 		return -ECHILD;
+
+	if (flags & LOOKUP_REVAL) {
+		if (inode)
+			CIFS_I(inode)->time = 0; /* force reval */
+	}
 
 	if (d_really_is_positive(direntry)) {
 		if (cifs_revalidate_dentry(direntry))
