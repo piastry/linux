@@ -813,8 +813,9 @@ struct durable_reconnect_context_v2 {
 		__u64 PersistentFileId;
 		__u64 VolatileFileId;
 	} Fid;
-	__u8 CreateGuid[16];
+	__u8   CreateGuid[16];
 	__le32 Flags; /* see above DHANDLE_FLAG_PERSISTENT */
+	__u8   Pad[4];
 } __packed;
 
 /* See MS-SMB2 2.2.14.2.9 */
